@@ -2,36 +2,65 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Flappy Bird</title>
 
-<!-- Google Font -->
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500&display=swap" rel="stylesheet">
 
 <style>
   body {
     margin: 0;
-    height: 100vh;
-    background: black;              /* BLACK BACKGROUND */
+    background: black;
     display: flex;
     justify-content: center;
     align-items: center;
-    user-select: none;
+    height: 100vh;
+    overflow: hidden;
   }
 
   canvas {
-    border: 3px solid white;
-    background: #70c5ce;            /* GAME SCREEN COLOR */
+    background: #70c5ce;
+    border: 2px solid white;
+    max-height: 100vh;
+    max-width: 100vw;
   }
 </style>
 </head>
 
 <body>
 
-<canvas id="game" width="400" height="600"></canvas>
+<canvas id="game"></canvas>
 
 <script>
+/* =====================
+   CANVAS RESPONSIVE
+===================== */
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
+
+const GAME_WIDTH = 400;
+const GAME_HEIGHT = 600;
+
+function resizeCanvas() {
+  const scale = Math.min(
+    window.innerWidth / GAME_WIDTH,
+    window.innerHeight / GAME_HEIGHT
+  );
+  canvas.width = GAME_WIDTH;
+  canvas.height = GAME_HEIGHT;
+  canvas.style.width = GAME_WIDTH * scale + "px";
+  canvas.style.height = GAME_HEIGHT * scale + "px";
+}
+
+window.addEventListener("resize", resizeCanvas);
+resizeCanvas();
+
+/* =====================
+   SOUNDS (Base64)
+===================== */
+const jumpSound = new Audio("data:audio/wav;base64,UklGRjQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA=");
+const scoreSound = new Audio("data:audio/wav;base64,UklGRjQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA=");
+const hitSound   = new Audio("data:audio/wav;base64,UklGRjQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA=");
 
 /* =====================
    GAME STATE
@@ -39,59 +68,63 @@ const ctx = canvas.getContext("2d");
 let gameState = "start"; // start | play | over
 let score = 0;
 let frame = 0;
+let canJump = true;
 
 /* =====================
    BIRD
 ===================== */
 const bird = {
-  x: 80,
+  x: 90,
   y: 250,
-  radius: 15,
-  gravity: 0.4,
-  lift: -8,
-  velocity: 0,
+  r: 14,
+  gravity: 0.35,
+  lift: -7,
+  vel: 0,
 
   draw() {
-    // body
     ctx.fillStyle = "yellow";
     ctx.beginPath();
-    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+    ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
     ctx.fill();
 
-    // eye
     ctx.fillStyle = "white";
     ctx.beginPath();
-    ctx.arc(this.x + 5, this.y - 5, 5, 0, Math.PI * 2);
+    ctx.arc(this.x + 4, this.y - 4, 4, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.fillStyle = "black";
     ctx.beginPath();
-    ctx.arc(this.x + 6, this.y - 5, 2, 0, Math.PI * 2);
+    ctx.arc(this.x + 5, this.y - 4, 2, 0, Math.PI * 2);
     ctx.fill();
   },
 
   update() {
-    this.velocity += this.gravity;
-    this.y += this.velocity;
+    this.vel += this.gravity;
+    this.y += this.vel;
 
-    if (this.y + this.radius > canvas.height) {
-      this.y = canvas.height - this.radius;
+    if (this.y + this.r > GAME_HEIGHT) {
+      this.y = GAME_HEIGHT - this.r;
+      hitSound.play();
       gameState = "over";
     }
 
-    if (this.y - this.radius < 0) {
-      this.y = this.radius;
-      this.velocity = 0;
+    if (this.y - this.r < 0) {
+      this.y = this.r;
+      this.vel = 0;
     }
   },
 
   jump() {
-    this.velocity = this.lift;
+    if (!canJump) return;
+    this.vel = this.lift;
+    jumpSound.play();
+    canJump = false;
+    setTimeout(() => canJump = true, 120);
   },
 
   reset() {
     this.y = 250;
-    this.velocity = 0;
+    this.vel = 0;
   }
 };
 
@@ -99,145 +132,130 @@ const bird = {
    PIPES
 ===================== */
 const pipes = [];
-const pipeWidth = 60;
-const pipeGap = 150;
+const pipeW = 60;
+const gap = 150;
 
-function createPipe() {
-  const topHeight = Math.random() * 250 + 50;
+function spawnPipe() {
+  const top = Math.random() * 220 + 80;
   pipes.push({
-    x: canvas.width,
-    top: topHeight,
-    bottom: canvas.height - topHeight - pipeGap,
-    passed: false
-  });
-}
-
-function drawPipes() {
-  ctx.fillStyle = "green";
-  pipes.forEach(p => {
-    ctx.fillRect(p.x, 0, pipeWidth, p.top);
-    ctx.fillRect(p.x, canvas.height - p.bottom, pipeWidth, p.bottom);
+    x: GAME_WIDTH,
+    top,
+    bottom: GAME_HEIGHT - top - gap,
+    scored: false
   });
 }
 
 function updatePipes() {
   pipes.forEach(p => {
-    p.x -= 2.2;
+    p.x -= 2;
 
-    // collision
     if (
-      bird.x + bird.radius > p.x &&
-      bird.x - bird.radius < p.x + pipeWidth &&
-      (bird.y - bird.radius < p.top ||
-       bird.y + bird.radius > canvas.height - p.bottom)
+      bird.x + bird.r > p.x &&
+      bird.x - bird.r < p.x + pipeW &&
+      (bird.y - bird.r < p.top ||
+       bird.y + bird.r > GAME_HEIGHT - p.bottom)
     ) {
+      hitSound.play();
       gameState = "over";
     }
 
-    // scoring
-    if (!p.passed && p.x + pipeWidth < bird.x) {
+    if (!p.scored && p.x + pipeW < bird.x) {
       score++;
-      p.passed = true;
+      scoreSound.play();
+      p.scored = true;
     }
   });
 
-  if (pipes.length && pipes[0].x + pipeWidth < 0) {
-    pipes.shift();
-  }
+  if (pipes.length && pipes[0].x + pipeW < 0) pipes.shift();
+}
+
+function drawPipes() {
+  ctx.fillStyle = "green";
+  pipes.forEach(p => {
+    ctx.fillRect(p.x, 0, pipeW, p.top);
+    ctx.fillRect(p.x, GAME_HEIGHT - p.bottom, pipeW, p.bottom);
+  });
 }
 
 /* =====================
    UI
 ===================== */
-function drawScore() {
+function drawText(text, y, size = 24) {
   ctx.fillStyle = "white";
+  ctx.font = `${size}px Poppins`;
+  ctx.textAlign = "center";
+  ctx.fillText(text, GAME_WIDTH / 2, y);
+  ctx.textAlign = "left";
+}
+
+function drawScore() {
   ctx.font = "30px Poppins";
+  ctx.fillStyle = "white";
   ctx.fillText(score, 20, 40);
 }
 
-function startScreen() {
-  ctx.fillStyle = "white";
-  ctx.font = "36px Poppins";
-  ctx.fillText("Flappy Bird", 95, 240);
-
-  ctx.font = "20px Poppins";
-  ctx.fillText("Press SPACE / TAP", 110, 290);
-}
-
-function gameOverScreen() {
-  ctx.fillStyle = "rgba(0,0,0,0.6)";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  ctx.fillStyle = "white";
-  ctx.font = "36px Poppins";
-  ctx.fillText("Game Over", 90, 260);
-
-  ctx.font = "20px Poppins";
-  ctx.fillText("Score: " + score, 150, 300);
-  ctx.fillText("Press R to Restart", 105, 340);
-}
-
-/* =====================
-   CREDIT
-===================== */
 function drawCredit() {
   ctx.font = "14px Poppins";
-  ctx.fillStyle = "rgba(255,255,255,0.85)";
+  ctx.fillStyle = "rgba(255,255,255,0.8)";
   ctx.textAlign = "right";
-  ctx.fillText("Game by :- Kartikey", canvas.width - 10, canvas.height - 10);
+  ctx.fillText("Game by :- Kartikey", GAME_WIDTH - 10, GAME_HEIGHT - 10);
   ctx.textAlign = "left";
 }
 
 /* =====================
    GAME LOOP
 ===================== */
-function gameLoop() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+function loop() {
+  ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
 
   bird.draw();
 
   if (gameState === "start") {
-    startScreen();
+    drawText("Flappy Bird", 260, 36);
+    drawText("Tap / Space to Start", 310, 18);
   }
 
   if (gameState === "play") {
     bird.update();
-
-    if (frame % 100 === 0) createPipe();
+    if (frame % 110 === 0) spawnPipe();
     drawPipes();
     updatePipes();
     drawScore();
-
     frame++;
   }
 
   if (gameState === "over") {
     drawPipes();
     drawScore();
-    gameOverScreen();
+    drawText("Game Over", 260, 36);
+    drawText("Tap or Press Space", 310, 18);
   }
 
   drawCredit();
-  requestAnimationFrame(gameLoop);
+  requestAnimationFrame(loop);
 }
 
 /* =====================
-   CONTROLS
+   INPUT (FIXED)
 ===================== */
-function handleJump() {
+function handleInput() {
   if (gameState === "start") gameState = "play";
-  if (gameState === "play") bird.jump();
+  else if (gameState === "play") bird.jump();
+  else if (gameState === "over") restart();
 }
 
 document.addEventListener("keydown", e => {
-  if (e.code === "Space") handleJump();
-  if (e.code === "KeyR" && gameState === "over") restartGame();
+  if (e.code === "Space") handleInput();
 });
 
-document.addEventListener("click", handleJump);
-document.addEventListener("touchstart", handleJump);
+canvas.addEventListener("touchstart", e => {
+  e.preventDefault();
+  handleInput();
+}, { passive: false });
 
-function restartGame() {
+canvas.addEventListener("mousedown", handleInput);
+
+function restart() {
   pipes.length = 0;
   score = 0;
   frame = 0;
@@ -248,7 +266,7 @@ function restartGame() {
 /* =====================
    START
 ===================== */
-gameLoop();
+loop();
 </script>
 
 </body>
