@@ -21,8 +21,8 @@
   canvas {
     background: #70c5ce;
     border: 2px solid white;
-    max-height: 100vh;
     max-width: 100vw;
+    max-height: 100vh;
   }
 </style>
 </head>
@@ -56,11 +56,49 @@ window.addEventListener("resize", resizeCanvas);
 resizeCanvas();
 
 /* =====================
-   SOUNDS (Base64)
+   SOUND ENGINE (REAL)
 ===================== */
-const jumpSound = new Audio("data:audio/wav;base64,UklGRjQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA=");
-const scoreSound = new Audio("data:audio/wav;base64,UklGRjQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA=");
-const hitSound   = new Audio("data:audio/wav;base64,UklGRjQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA=");
+let audioCtx = null;
+
+function initAudio() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+}
+
+function playSound(type) {
+  if (!audioCtx) return;
+
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+
+  if (type === "jump") {
+    osc.frequency.value = 500;
+    gain.gain.value = 0.15;
+    osc.type = "square";
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.08);
+  }
+
+  if (type === "score") {
+    osc.frequency.value = 800;
+    gain.gain.value = 0.12;
+    osc.type = "triangle";
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.12);
+  }
+
+  if (type === "hit") {
+    osc.frequency.value = 120;
+    gain.gain.value = 0.2;
+    osc.type = "sawtooth";
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.25);
+  }
+}
 
 /* =====================
    GAME STATE
@@ -104,7 +142,7 @@ const bird = {
 
     if (this.y + this.r > GAME_HEIGHT) {
       this.y = GAME_HEIGHT - this.r;
-      hitSound.play();
+      playSound("hit");
       gameState = "over";
     }
 
@@ -117,7 +155,7 @@ const bird = {
   jump() {
     if (!canJump) return;
     this.vel = this.lift;
-    jumpSound.play();
+    playSound("jump");
     canJump = false;
     setTimeout(() => canJump = true, 120);
   },
@@ -155,13 +193,13 @@ function updatePipes() {
       (bird.y - bird.r < p.top ||
        bird.y + bird.r > GAME_HEIGHT - p.bottom)
     ) {
-      hitSound.play();
+      playSound("hit");
       gameState = "over";
     }
 
     if (!p.scored && p.x + pipeW < bird.x) {
       score++;
-      scoreSound.play();
+      playSound("score");
       p.scored = true;
     }
   });
@@ -180,7 +218,7 @@ function drawPipes() {
 /* =====================
    UI
 ===================== */
-function drawText(text, y, size = 24) {
+function drawCentered(text, y, size) {
   ctx.fillStyle = "white";
   ctx.font = `${size}px Poppins`;
   ctx.textAlign = "center";
@@ -211,8 +249,8 @@ function loop() {
   bird.draw();
 
   if (gameState === "start") {
-    drawText("Flappy Bird", 260, 36);
-    drawText("Tap / Space to Start", 310, 18);
+    drawCentered("Flappy Bird", 260, 36);
+    drawCentered("Tap / Space to Start", 310, 18);
   }
 
   if (gameState === "play") {
@@ -227,8 +265,8 @@ function loop() {
   if (gameState === "over") {
     drawPipes();
     drawScore();
-    drawText("Game Over", 260, 36);
-    drawText("Tap or Press Space", 310, 18);
+    drawCentered("Game Over", 260, 36);
+    drawCentered("Tap or Space to Restart", 310, 18);
   }
 
   drawCredit();
@@ -236,9 +274,11 @@ function loop() {
 }
 
 /* =====================
-   INPUT (FIXED)
+   INPUT (TOUCH + KEYBOARD)
 ===================== */
 function handleInput() {
+  initAudio(); // unlock audio on first interaction
+
   if (gameState === "start") gameState = "play";
   else if (gameState === "play") bird.jump();
   else if (gameState === "over") restart();
